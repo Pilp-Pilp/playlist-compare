@@ -1,4 +1,12 @@
 .idea/
+.venv/
+__pycache__/
+.DS_Store
 
 playlists/
 results/
+
+PlaylistOrganizerApp/.build/
+PlaylistOrganizerApp/PlaylistOrganizer.app/
+PlaylistOrganizerApp/icon_source.png
+PlaylistOrganizerApp/AppIcon.iconset/

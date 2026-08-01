@@ -10,9 +10,13 @@ logger = logging.getLogger(__name__)
 
 
 def load_playlist(file_path: Path) -> DataFrame:
+    with open(file_path, 'rb') as f:
+        encoding = 'utf-16' if f.read(2) in (b'\xff\xfe', b'\xfe\xff') else 'utf-8'
+
     df = read_csv(
         file_path,
         sep='\t',
+        encoding=encoding,
         parse_dates=DATE_COLUMNS,
         dayfirst=True
     )
