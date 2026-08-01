@@ -73,14 +73,22 @@ private struct RowHeightHandle: View {
     }
 }
 
+private enum BuildMode {
+    case new
+    case existing
+}
+
 struct CompareView: View {
     let playlists: [String]
     @State private var selections: [String] = ["", ""]
     @State private var outputName: String = ""
+    @State private var buildMode: BuildMode = .new
+    @State private var existingPlaylistTarget: String = ""
     @State private var isComparing = false
     @State private var isBuilding = false
     @State private var errorMessage = ""
     @State private var buildResult = ""
+    @State private var quickAddResult = ""
     @State private var rows: [SongRow] = []
     @State private var comparedPlaylists: [String] = []
     @State private var filterText = ""
@@ -208,12 +216,27 @@ struct CompareView: View {
 
             Divider()
 
+            Picker("", selection: $buildMode) {
+                Text("New Playlist").tag(BuildMode.new)
+                Text("Existing Playlist").tag(BuildMode.existing)
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 260)
+
             HStack {
-                TextField("New playlist name", text: $outputName)
-                Button(isBuilding ? "Building…" : "Build Playlist from Selection") {
+                if buildMode == .new {
+                    TextField("New playlist name", text: $outputName)
+                } else {
+                    Picker("Target playlist", selection: $existingPlaylistTarget) {
+                        ForEach(playlists, id: \.self) { Text($0).tag($0) }
+                    }
+                    .frame(maxWidth: 300)
+                }
+                Button(isBuilding ? "Working…" : buildButtonTitle) {
                     runBuild()
                 }
-                .disabled(selectedCount == 0 || outputName.isEmpty || isBuilding)
+                .disabled(selectedCount == 0 || targetPlaylistName.isEmpty || isBuilding)
             }
 
             if isBuilding {
@@ -222,7 +245,21 @@ struct CompareView: View {
             if !buildResult.isEmpty {
                 Text(buildResult).textSelection(.enabled)
             }
+            if !quickAddResult.isEmpty {
+                Text(quickAddResult)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
         }
+    }
+
+    private var targetPlaylistName: String {
+        buildMode == .new ? outputName : existingPlaylistTarget
+    }
+
+    private var buildButtonTitle: String {
+        buildMode == .new ? "Build Playlist from Selection" : "Add Selection to Playlist"
     }
 
     private var totalTableWidth: CGFloat {
@@ -312,6 +349,15 @@ struct CompareView: View {
                 Text("").frame(width: statusWidth, alignment: .center)
             }
         }
+        .contextMenu {
+            Menu("Add to Playlist") {
+                ForEach(playlists, id: \.self) { name in
+                    Button(name) {
+                        quickAdd(rowIdx: idx, to: name)
+                    }
+                }
+            }
+        }
     }
 
     private var canCompare: Bool {
@@ -341,6 +387,9 @@ struct CompareView: View {
 
     private func updateDefaultName() {
         let names = selections.filter { !$0.isEmpty }
+        if existingPlaylistTarget.isEmpty {
+            existingPlaylistTarget = playlists.first(where: { !names.contains($0) }) ?? playlists.first ?? ""
+        }
         guard names.count >= 2 else { return }
         outputName = names.joined(separator: " vs ") + " - Non-Overlap"
     }
@@ -400,24 +449,41 @@ struct CompareView: View {
         }
     }
 
+    private func pick(for row: SongRow) -> PlaylistSelection? {
+        for playlist in comparedPlaylists {
+            if let presence = row.presence[playlist] ?? nil {
+                return PlaylistSelection(source: playlist, id: presence.id)
+            }
+        }
+        return nil
+    }
+
     private func runBuild() {
         isBuilding = true
         buildResult = ""
-        let name = outputName
-        let playlistOrder = comparedPlaylists
-        let picks: [PlaylistSelection] = rows.filter(\.selected).compactMap { row in
-            for playlist in playlistOrder {
-                if let presence = row.presence[playlist] ?? nil {
-                    return PlaylistSelection(source: playlist, id: presence.id)
-                }
-            }
-            return nil
-        }
+        quickAddResult = ""
+        let name = targetPlaylistName
+        let picks: [PlaylistSelection] = rows.filter(\.selected).compactMap(pick(for:))
         DispatchQueue.global(qos: .userInitiated).async {
             let result = MusicController.buildPlaylist(name: name, selections: picks)
             DispatchQueue.main.async {
                 buildResult = result.output
                 isBuilding = false
+            }
+        }
+    }
+
+    private func quickAdd(rowIdx: Int, to playlist: String) {
+        guard let selection = pick(for: rows[rowIdx]) else { return }
+        let trackLabel = "\(rows[rowIdx].artist) - \(rows[rowIdx].name)"
+        buildResult = ""
+        quickAddResult = "Adding \"\(trackLabel)\" to \(playlist)…"
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = MusicController.buildPlaylist(name: playlist, selections: [selection])
+            DispatchQueue.main.async {
+                quickAddResult = result.success
+                    ? "Added \"\(trackLabel)\" to \(playlist)"
+                    : "Failed to add \"\(trackLabel)\": \(result.output)"
             }
         }
     }
