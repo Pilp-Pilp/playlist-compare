@@ -80,6 +80,7 @@ private enum BuildMode {
 
 struct CompareView: View {
     let playlists: [String]
+    @ObservedObject var settings: AppSettings
     @State private var selections: [String] = ["", ""]
     @State private var outputName: String = ""
     @State private var buildMode: BuildMode = .new
@@ -463,11 +464,18 @@ struct CompareView: View {
         buildResult = ""
         quickAddResult = ""
         let name = targetPlaylistName
+        let shouldReorder = buildMode == .existing
+        let sortSpec = settings.sortSpec
         let picks: [PlaylistSelection] = rows.filter(\.selected).compactMap(pick(for:))
         DispatchQueue.global(qos: .userInitiated).async {
             let result = MusicController.buildPlaylist(name: name, selections: picks)
+            var output = result.output
+            if result.success && shouldReorder {
+                let reorderResult = MusicController.reorder(playlist: name, sortSpec: sortSpec)
+                output += (output.isEmpty ? "" : "\n") + reorderResult.output
+            }
             DispatchQueue.main.async {
-                buildResult = result.output
+                buildResult = output
                 isBuilding = false
             }
         }
@@ -476,13 +484,17 @@ struct CompareView: View {
     private func quickAdd(rowIdx: Int, to playlist: String) {
         guard let selection = pick(for: rows[rowIdx]) else { return }
         let trackLabel = "\(rows[rowIdx].artist) - \(rows[rowIdx].name)"
+        let sortSpec = settings.sortSpec
         buildResult = ""
         quickAddResult = "Adding \"\(trackLabel)\" to \(playlist)…"
         DispatchQueue.global(qos: .userInitiated).async {
             let result = MusicController.buildPlaylist(name: playlist, selections: [selection])
+            if result.success {
+                _ = MusicController.reorder(playlist: playlist, sortSpec: sortSpec)
+            }
             DispatchQueue.main.async {
                 quickAddResult = result.success
-                    ? "Added \"\(trackLabel)\" to \(playlist)"
+                    ? "Added \"\(trackLabel)\" to \(playlist) and reordered it"
                     : "Failed to add \"\(trackLabel)\": \(result.output)"
             }
         }

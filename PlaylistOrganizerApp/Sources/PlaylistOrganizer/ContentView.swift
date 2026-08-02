@@ -13,7 +13,7 @@ struct ContentView: View {
                 ReorderView(playlists: playlists, settings: settings)
                     .tabItem { Label("Reorder", systemImage: "arrow.up.arrow.down") }
 
-                CompareView(playlists: playlists)
+                CompareView(playlists: playlists, settings: settings)
                     .tabItem { Label("Compare", systemImage: "rectangle.on.rectangle") }
 
                 PreferencesView(settings: settings)

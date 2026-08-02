@@ -11,6 +11,12 @@ on run argv
 
     tell application "Music"
         set thePlaylist to playlist playlistName
+        -- An empty playlist makes Music error on some bulk "every track" properties
+        -- (e.g. date added) instead of returning an empty list, so short-circuit here.
+        if (count of tracks of thePlaylist) is 0 then
+            return ""
+        end if
+
         -- Bulk "of every track" queries resolve as a single Apple Event each, instead of
         -- one Apple Event per track per property via a repeat loop (order of magnitude faster
         -- for large playlists). "as list" guards against AppleScript collapsing a one-track
